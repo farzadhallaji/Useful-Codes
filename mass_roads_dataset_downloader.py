@@ -1,81 +1,75 @@
 import os
 import requests
-from bs4 import BeautifulSoup
 
-# Define the base URL for downloading
+# Base URL for the dataset
 BASE_URL = "https://www.cs.toronto.edu/~vmnih/data/"
 
-# Load the HTML file
-html_file = "road-dataset.html"
+# List of dataset URLs
+DATASET_URLS = [
+    "mass_roads/train/sat/index.html",
+    "mass_roads/train/map/index.html",
+    "mass_roads/valid/sat/index.html",
+    "mass_roads/valid/map/index.html",
+    "mass_roads/test/sat/index.html",
+    "mass_roads/test/map/index.html",
+    "mass_roads/massachusetts_roads_shape.zip"
+]
 
-# Function to sanitize directory paths
-def sanitize_path(path):
-    return path.replace(':', '').replace('\\', '/').replace('?', '')
+# Function to create directories
+def create_directory(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
 
-# Function to download a file if it doesn't exist
-def download_file(url, output_dir):
-    filename = url.split('/')[-1]
-    output_path = os.path.join(output_dir, filename)
-
-    if not os.path.exists(output_path):
+# Function to download a file
+def download_file(url, save_path):
+    if not os.path.exists(save_path):
         print(f"Downloading: {url}")
         response = requests.get(url, stream=True)
         if response.status_code == 200:
-            with open(output_path, 'wb') as file:
+            with open(save_path, 'wb') as file:
                 for chunk in response.iter_content(chunk_size=1024):
                     file.write(chunk)
-            print(f"Downloaded: {filename}")
+            print(f"Downloaded: {save_path}")
         else:
             print(f"Failed to download: {url}")
     else:
-        print(f"File already exists: {filename}")
+        print(f"File already exists: {save_path}")
 
-# Function to parse an index.html file and download all linked files
-def process_index_file(index_file_path, base_url):
+# Function to process an index.html file
+def process_index_file(url, save_dir):
+    index_file_path = os.path.join(save_dir, "index.html")
+    download_file(f"{BASE_URL}{url}", index_file_path)
+
+    # Read the index.html file to find linked .tiff files
     with open(index_file_path, 'r') as file:
-        soup = BeautifulSoup(file, 'html.parser')
+        content = file.readlines()
 
-    links = soup.find_all('a')
-    for link in links:
-        href = link.get('href')
-        if href:
-            # Determine the corresponding subdirectory based on the link's path
-            subdirectory = sanitize_path(os.path.dirname(href).replace('/', os.sep))
-            output_directory = os.path.join(os.getcwd(), subdirectory)
+    for line in content:
+        if ".tiff" in line:
+            # Extract the .tiff file URL
+            start = line.find("href=\"") + 6
+            end = line.find(".tiff") + 5
+            tiff_url = line[start:end]
 
-            # Create the subdirectory if it doesn't exist
-            os.makedirs(output_directory, exist_ok=True)
+            # If the URL is relative, prepend BASE_URL
+            if not tiff_url.startswith("http"):
+                tiff_url = f"{BASE_URL}{tiff_url}"
 
-            # Download the file
-            full_url = base_url + href if not href.startswith("http") else href
-            download_file(full_url, output_directory)
+            # Save the .tiff file
+            tiff_save_path = os.path.join(save_dir, os.path.basename(tiff_url))
+            download_file(tiff_url, tiff_save_path)
 
-            # If the downloaded file is an index.html, process it recursively
-            if href.endswith("index.html"):
-                process_index_file(os.path.join(output_directory, "index.html"), os.path.dirname(full_url) + '/')
+# Download each dataset URL
+for url in DATASET_URLS:
+    if "index.html" in url:
+        # Create the corresponding directory
+        folder_structure = url.replace("mass_roads/", "").replace("/index.html", "")
+        save_dir = os.path.join(os.getcwd(), "mass_roads", folder_structure)
+        create_directory(save_dir)
 
-# Parse the main HTML file
-with open(html_file, 'r') as file:
-    soup = BeautifulSoup(file, 'html.parser')
-
-# Find all links in the main HTML file
-links = soup.find_all('a')
-
-# Process each link
-for link in links:
-    href = link.get('href')
-    if href:
-        # Determine the corresponding subdirectory based on the link's path
-        subdirectory = sanitize_path(os.path.dirname(href).replace('/', os.sep))
-        output_directory = os.path.join(os.getcwd(), subdirectory)
-
-        # Create the subdirectory if it doesn't exist
-        os.makedirs(output_directory, exist_ok=True)
-
-        # Download the file
-        full_url = BASE_URL + href if not href.startswith("http") else href
-        download_file(full_url, output_directory)
-
-        # If the downloaded file is an index.html, process it
-        if href.endswith("index.html"):
-            process_index_file(os.path.join(output_directory, "index.html"), BASE_URL)
+        # Process the index.html file
+        process_index_file(url, save_dir)
+    else:
+        # Directly download other files like shapefile
+        save_path = os.path.join(os.getcwd(), "mass_roads", os.path.basename(url))
+        download_file(f"{BASE_URL}{url}", save_path)
