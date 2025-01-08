@@ -1,26 +1,5 @@
 import os
 import requests
-
-# Base URL for the dataset
-BASE_URL = "https://www.cs.toronto.edu/~vmnih/data/"
-
-# List of dataset URLs
-DATASET_URLS = [
-    "mass_roads/train/sat/index.html",
-    "mass_roads/train/map/index.html",
-    "mass_roads/valid/sat/index.html",
-    "mass_roads/valid/map/index.html",
-    "mass_roads/test/sat/index.html",
-    "mass_roads/test/map/index.html",
-    "mass_roads/massachusetts_roads_shape.zip"
-]
-
-# Function to create directories
-def create_directory(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-# Function to download a file
 def download_file(url, save_path):
     if not os.path.exists(save_path):
         print(f"Downloading: {url}")
@@ -35,41 +14,49 @@ def download_file(url, save_path):
     else:
         print(f"File already exists: {save_path}")
 
-# Function to process an index.html file
-def process_index_file(url, save_dir):
-    index_file_path = os.path.join(save_dir, "index.html")
-    download_file(f"{BASE_URL}{url}", index_file_path)
+from bs4 import BeautifulSoup
 
-    # Read the index.html file to find linked .tiff files
-    with open(index_file_path, 'r') as file:
-        content = file.readlines()
+def extract_hrefs_from_html(html_file):
+    """
+    Extracts all href attributes from <a> tags in an HTML file.
+    
+    Args:
+        html_file (str): Path to the HTML file.
+        output_file (str, optional): Path to save the extracted hrefs. If None, no file is saved.
+    
+    Returns:
+        list: A list of href strings extracted from the HTML file.
+    """
+    # Load the HTML file
+    with open(html_file, 'r', encoding='utf-8') as file:
+        content = file.read()
 
-    for line in content:
-        if ".tiff" in line:
-            # Extract the .tiff file URL
-            start = line.find("href=\"") + 6
-            end = line.find(".tiff") + 5
-            tiff_url = line[start:end]
+    # Parse the HTML content with BeautifulSoup
+    soup = BeautifulSoup(content, 'html.parser')
 
-            # If the URL is relative, prepend BASE_URL
-            if not tiff_url.startswith("http"):
-                tiff_url = f"{BASE_URL}{tiff_url}"
+    # Extract all href attributes from <a> tags
+    hrefs = [a['href'] for a in soup.find_all('a', href=True)]
 
-            # Save the .tiff file
-            tiff_save_path = os.path.join(save_dir, os.path.basename(tiff_url))
-            download_file(tiff_url, tiff_save_path)
-
-# Download each dataset URL
-for url in DATASET_URLS:
-    if "index.html" in url:
-        # Create the corresponding directory
-        folder_structure = url.replace("mass_roads/", "").replace("/index.html", "")
-        save_dir = os.path.join(os.getcwd(), "mass_roads", folder_structure)
-        create_directory(save_dir)
-
-        # Process the index.html file
-        process_index_file(url, save_dir)
-    else:
-        # Directly download other files like shapefile
-        save_path = os.path.join(os.getcwd(), "mass_roads", os.path.basename(url))
-        download_file(f"{BASE_URL}{url}", save_path)
+    return hrefs
+    
+dataset = {
+    ("train","sat"):'https://www.cs.toronto.edu/~vmnih/data/mass_roads/train/sat/index.html',
+    ("train","map"):'https://www.cs.toronto.edu/~vmnih/data/mass_roads/train/map/index.html',
+    ("valid","sat"):'https://www.cs.toronto.edu/~vmnih/data/mass_roads/valid/sat/index.html',
+    ("valid","map"):'https://www.cs.toronto.edu/~vmnih/data/mass_roads/valid/map/index.html',
+    ("test", "sat"):'https://www.cs.toronto.edu/~vmnih/data/mass_roads/test/sat/index.html',
+    ("test", "map"):'https://www.cs.toronto.edu/~vmnih/data/mass_roads/test/map/index.html',
+  
+} 
+BASE = "mass_dataset"
+for folders, url in dataset.items():
+  os.makedirs(BASE, exist_ok=True)
+  f1 = os.path.join(BASE, folders[0]) 
+  f2 = os.path.join(f1, folders[1])
+  os.makedirs(f1, exist_ok=True) 
+  os.makedirs(f2, exist_ok=True)
+  index = os.path.join(f2, "index.html")
+  download_file(url, index)
+  hrefs = extract_hrefs_from_html(index)
+  for href in hrefs:
+    download_file(href, os.path.join(f2, href.split('/')[-1]))
